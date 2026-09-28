@@ -3,8 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Teleprompter">
 <meta name="format-detection" content="telephone=no">
 <title>Teleprompter</title>
@@ -268,7 +266,7 @@
         syncing = false;
         setSync('falhou (' + err.message + ') — usando a cópia deste aparelho' + (meta.pending ? '; há alterações para enviar' : '') + '. Diagnosticando...', '#f66');
         probe(function (info) {
-          setSync('falhou (' + err.message + '). Diagnóstico: ' + info + '. Versão 3.2', '#f66');
+          setSync('falhou (' + err.message + '). Diagnóstico: ' + info + '. Versão 3.3', '#f66');
         });
         return;
       }
