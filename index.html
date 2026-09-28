@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR" manifest="teleprompter.appcache">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Teleprompter">
+<meta name="format-detection" content="telephone=no">
+<title>Teleprompter</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: rgba(0,0,0,0); }
+  html, body { margin: 0; padding: 0; height: 100%; background: #111; color: #eee;
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+
+  /* ---------- TELA DE EDIÇÃO ---------- */
+  #editor { padding: 16px; max-width: 900px; margin: 0 auto; }
+  #editor h1 { font-size: 22px; margin: 0 0 12px 0; color: #fff; }
+  .row { display: -webkit-box; display: -webkit-flex; display: flex; margin-bottom: 10px; }
+  .row > * { margin-right: 8px; }
+  .row > *:last-child { margin-right: 0; }
+  select, input[type=text], textarea {
+    width: 100%; font-size: 17px; padding: 10px; border: 1px solid #444; border-radius: 6px;
+    background: #222; color: #eee; -webkit-appearance: none; }
+  select { -webkit-flex: 1; flex: 1; }
+  textarea { height: 220px; resize: none; line-height: 1.4; }
+  button { font-size: 17px; padding: 10px 16px; border: 0; border-radius: 6px;
+    background: #444; color: #fff; -webkit-appearance: none; }
+  button.primary { background: #c8102e; -webkit-flex: 1; flex: 1; font-weight: bold; }
+  .settings { background: #1c1c1c; border-radius: 8px; padding: 12px; margin-top: 6px; }
+  .settings label { display: block; margin-bottom: 14px; font-size: 16px; }
+  .settings input[type=range] { width: 100%; margin-top: 6px; }
+  .settings input[type=checkbox] { -webkit-transform: scale(1.4); transform: scale(1.4); margin-right: 10px; }
+  .settings span.val { color: #f66; font-weight: bold; }
+  .hint { color: #999; font-size: 14px; line-height: 1.4; }
+
+  /* ---------- TELA DO TELEPROMPTER ---------- */
+  #prompter { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: #000; overflow: hidden; }
+  #scroller { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+  #content { color: #fff; font-weight: bold; line-height: 1.35; white-space: pre-wrap;
+    word-wrap: break-word; padding-top: 42%; padding-bottom: 100%;
+    -webkit-transform: translate3d(0,0,0); transform: translate3d(0,0,0); }
+  #guideLine { position: absolute; left: 0; right: 0; top: 40%; height: 3px;
+    background: rgba(255,60,60,0.7); z-index: 5; }
+  #hud { position: absolute; top: 8px; right: 8px; z-index: 10; opacity: 0.85; }
+  #hud button { font-size: 22px; padding: 8px 14px; margin-left: 6px; background: rgba(80,80,80,0.8); }
+  #hud span { font-size: 18px; color: #fff; margin-left: 6px; vertical-align: middle; }
+  #paused { position: absolute; left: 0; right: 0; bottom: 20px; text-align: center; z-index: 5;
+    color: #f66; font-size: 22px; font-weight: bold; display: none; }
+  .mirrorH #scroller { -webkit-transform: scaleX(-1); transform: scaleX(-1); }
+  .mirrorV #scroller { -webkit-transform: scaleY(-1); transform: scaleY(-1); }
+  .mirrorH.mirrorV #scroller { -webkit-transform: scale(-1,-1); transform: scale(-1,-1); }
+</style>
+</head>
+<body>
+
+<div id="editor">
+  <h1>Teleprompter</h1>
+
+  <div class="row">
+    <select id="scriptList"></select>
+    <button id="btnNew">Novo</button>
+    <button id="btnDelete">Excluir</button>
+  </div>
+
+  <div class="row">
+    <input type="text" id="title" placeholder="Título do texto">
+  </div>
+
+  <div class="row">
+    <textarea id="text" placeholder="Cole ou digite o texto aqui..."></textarea>
+  </div>
+
+  <div class="row">
+    <button id="btnSave">Salvar</button>
+    <button id="btnStart" class="primary">Iniciar &#9654;</button>
+  </div>
+
+  <div class="settings">
+    <label>Velocidade: <span class="val" id="speedVal"></span>
+      <input type="range" id="speed" min="10" max="250" step="5" value="60"></label>
+    <label>Tamanho da letra: <span class="val" id="sizeVal"></span>
+      <input type="range" id="size" min="24" max="120" step="2" value="56"></label>
+    <label>Margem lateral: <span class="val" id="marginVal"></span>
+      <input type="range" id="margin" min="0" max="30" step="1" value="8"></label>
+    <label><input type="checkbox" id="mirrorH"> Espelhar horizontalmente (uso com espelho/vidro)</label>
+    <label><input type="checkbox" id="mirrorV"> Espelhar verticalmente</label>
+    <label><input type="checkbox" id="guide" checked> Mostrar linha-guia vermelha</label>
+  </div>
+
+  <p class="hint">Durante a leitura: toque em qualquer lugar da tela para pausar ou continuar.
+  Os botões no canto superior direito ajustam a velocidade (− / +), reiniciam (&#8635;) e saem (&#10005;).
+  Os textos salvos ficam guardados no próprio iPad, sem precisar de internet.</p>
+</div>
+
+<div id="prompter">
+  <div id="guideLine"></div>
+  <div id="scroller"><div id="content"></div></div>
+  <div id="hud">
+    <button id="hudSlower">&#8722;</button><span id="hudSpeed"></span><button id="hudFaster">+</button>
+    <button id="hudRestart">&#8635;</button>
+    <button id="hudExit">&#10005;</button>
+  </div>
+  <div id="paused">PAUSADO &#8212; toque para continuar</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  function $(id) { return document.getElementById(id); }
+
+  var editor = $('editor'), prompter = $('prompter'), content = $('content'),
+      scroller = $('scroller'), guideLine = $('guideLine'), pausedMsg = $('paused'),
+      scriptList = $('scriptList'), titleInput = $('title'), textInput = $('text'),
+      speedInput = $('speed'), sizeInput = $('size'), marginInput = $('margin'),
+      mirrorH = $('mirrorH'), mirrorV = $('mirrorV'), guideChk = $('guide'),
+      hudSpeed = $('hudSpeed');
+
+  var STORAGE_KEY = 'tp_scripts', SETTINGS_KEY = 'tp_settings';
+  var scripts = [], currentIndex = -1;
+
+  /* ---------- armazenamento local ---------- */
+  function load(key, fallback) {
+    try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch (e) { return fallback; }
+  }
+  function store(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { alert('Não foi possível salvar.'); }
+  }
+
+  /* ---------- configurações ---------- */
+  function readSettings() {
+    return {
+      speed: parseInt(speedInput.value, 10),
+      size: parseInt(sizeInput.value, 10),
+      margin: parseInt(marginInput.value, 10),
+      mirrorH: mirrorH.checked,
+      mirrorV: mirrorV.checked,
+      guide: guideChk.checked
+    };
+  }
+  function applySettingsToForm(s) {
+    speedInput.value = s.speed; sizeInput.value = s.size; marginInput.value = s.margin;
+    mirrorH.checked = !!s.mirrorH; mirrorV.checked = !!s.mirrorV; guideChk.checked = s.guide !== false;
+    updateLabels();
+  }
+  function updateLabels() {
+    $('speedVal').textContent = speedInput.value;
+    $('sizeVal').textContent = sizeInput.value + ' px';
+    $('marginVal').textContent = marginInput.value + ' %';
+  }
+  function saveSettings() { store(SETTINGS_KEY, readSettings()); updateLabels(); }
+
+  var inputs = [speedInput, sizeInput, marginInput, mirrorH, mirrorV, guideChk];
+  for (var i = 0; i < inputs.length; i++) {
+    inputs[i].addEventListener('change', saveSettings, false);
+    inputs[i].addEventListener('input', updateLabels, false);
+  }
+
+  /* ---------- lista de textos ---------- */
+  function refreshList() {
+    scriptList.innerHTML = '';
+    var opt = document.createElement('option');
+    opt.value = '-1'; opt.textContent = '— Texto novo —';
+    scriptList.appendChild(opt);
+    for (var j = 0; j < scripts.length; j++) {
+      var o = document.createElement('option');
+      o.value = String(j); o.textContent = scripts[j].title || ('Texto ' + (j + 1));
+      scriptList.appendChild(o);
+    }
+    scriptList.value = String(currentIndex);
+  }
+  function selectScript(idx) {
+    currentIndex = idx;
+    if (idx >= 0 && scripts[idx]) {
+      titleInput.value = scripts[idx].title; textInput.value = scripts[idx].text;
+    } else {
+      titleInput.value = ''; textInput.value = '';
+    }
+    refreshList();
+  }
+  scriptList.addEventListener('change', function () {
+    selectScript(parseInt(scriptList.value, 10));
+  }, false);
+
+  $('btnNew').addEventListener('click', function () { selectScript(-1); textInput.focus(); }, false);
+
+  $('btnSave').addEventListener('click', function () {
+    var t = titleInput.value.replace(/^\s+|\s+$/g, '') || ('Texto ' + new Date().toLocaleString());
+    var body = textInput.value;
+    if (!body.replace(/^\s+|\s+$/g, '')) { alert('Digite ou cole um texto antes de salvar.'); return; }
+    if (currentIndex >= 0 && scripts[currentIndex]) {
+      scripts[currentIndex] = { title: t, text: body };
+    } else {
+      scripts.push({ title: t, text: body }); currentIndex = scripts.length - 1;
+    }
+    titleInput.value = t;
+    store(STORAGE_KEY, scripts); refreshList();
+    alert('Texto salvo.');
+  }, false);
+
+  $('btnDelete').addEventListener('click', function () {
+    if (currentIndex < 0 || !scripts[currentIndex]) { textInput.value = ''; titleInput.value = ''; return; }
+    if (!confirm('Excluir o texto "' + scripts[currentIndex].title + '"?')) return;
+    scripts.splice(currentIndex, 1); store(STORAGE_KEY, scripts); selectScript(-1);
+  }, false);
+
+  /* ---------- rolagem ---------- */
+  var running = false, paused = false, y = 0, lastTime = 0, speed = 60, maxY = 0, rafId = null;
+
+  function setTransform(px) {
+    var t = 'translate3d(0,' + (-px) + 'px,0)';
+    content.style.webkitTransform = t; content.style.transform = t;
+  }
+  function frame(now) {
+    if (!running) return;
+    if (!paused) {
+      var dt = lastTime ? (now - lastTime) / 1000 : 0;
+      if (dt > 0.2) dt = 0.2;
+      y += speed * dt;
+      if (y >= maxY) { y = maxY; paused = true; pausedMsg.textContent = 'FIM — toque para reiniciar'; pausedMsg.style.display = 'block'; }
+      setTransform(y);
+    }
+    lastTime = now;
+    rafId = window.requestAnimationFrame(frame);
+  }
+  function showSpeed() { hudSpeed.textContent = speed; }
+
+  function startPrompter() {
+    var s = readSettings();
+    var body = textInput.value;
+    if (!body.replace(/^\s+|\s+$/g, '')) { alert('Não há texto para exibir.'); return; }
+    speed = s.speed;
+    content.textContent = body;
+    content.style.fontSize = s.size + 'px';
+    content.style.paddingLeft = s.margin + '%';
+    content.style.paddingRight = s.margin + '%';
+    guideLine.style.display = s.guide ? 'block' : 'none';
+    prompter.className = (s.mirrorH ? 'mirrorH ' : '') + (s.mirrorV ? 'mirrorV' : '');
+    editor.style.display = 'none'; prompter.style.display = 'block';
+    window.scrollTo(0, 0);
+    y = 0; setTransform(0); lastTime = 0; paused = false;
+    pausedMsg.style.display = 'none';
+    maxY = content.offsetHeight - Math.round(window.innerHeight * 0.4);
+    if (maxY < 0) maxY = 0;
+    showSpeed();
+    running = true;
+    rafId = window.requestAnimationFrame(frame);
+  }
+  function stopPrompter() {
+    running = false;
+    if (rafId) { window.cancelAnimationFrame(rafId); rafId = null; }
+    prompter.style.display = 'none'; editor.style.display = 'block';
+  }
+  function togglePause() {
+    if (y >= maxY && maxY > 0) { y = 0; setTransform(0); paused = false; pausedMsg.style.display = 'none'; lastTime = 0; return; }
+    paused = !paused; lastTime = 0;
+    pausedMsg.textContent = 'PAUSADO — toque para continuar';
+    pausedMsg.style.display = paused ? 'block' : 'none';
+  }
+
+  $('btnStart').addEventListener('click', startPrompter, false);
+  scroller.addEventListener('click', togglePause, false);
+  pausedMsg.addEventListener('click', togglePause, false);
+
+  function hud(id, fn) {
+    $(id).addEventListener('click', function (e) { e.stopPropagation(); fn(); }, false);
+  }
+  hud('hudSlower', function () { speed = Math.max(5, speed - 5); showSpeed(); });
+  hud('hudFaster', function () { speed = Math.min(400, speed + 5); showSpeed(); });
+  hud('hudRestart', function () { y = 0; setTransform(0); paused = false; lastTime = 0; pausedMsg.style.display = 'none'; });
+  hud('hudExit', function () { speedInput.value = speed; saveSettings(); stopPrompter(); });
+
+  /* impede que o toque na tela do teleprompter "role" a página */
+  prompter.addEventListener('touchmove', function (e) { e.preventDefault(); }, false);
+
+  window.addEventListener('orientationchange', function () {
+    if (running) { maxY = content.offsetHeight - Math.round(window.innerHeight * 0.4); if (maxY < 0) maxY = 0; }
+  }, false);
+
+  /* ---------- inicialização ---------- */
+  scripts = load(STORAGE_KEY, []);
+  applySettingsToForm(load(SETTINGS_KEY, readSettings()));
+  if (scripts.length) { selectScript(0); } else { refreshList(); }
+
+  /* atualização do cache off-line, quando houver internet */
+  if (window.applicationCache) {
+    window.applicationCache.addEventListener('updateready', function () {
+      try { window.applicationCache.swapCache(); } catch (e) {}
+    }, false);
+  }
+})();
+</script>
+</body>
+</html>
