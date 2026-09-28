@@ -1,5 +1,5 @@
 CACHE MANIFEST
-# Teleprompter off-line - versao 3.1 (sincronizacao via GitHub)
+# Teleprompter off-line - versao 3.2 (libera chamadas externas no Safari antigo)
 # Para forcar o iPad a baixar uma nova versao, mude o numero da versao acima.
 
 CACHE:
@@ -7,3 +7,5 @@ index.html
 
 NETWORK:
 *
+http://*
+https://*

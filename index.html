@@ -215,6 +215,20 @@
     else { x.send(); }
   }
 
+  /* teste simples, sem cabeçalhos especiais, para diagnosticar falhas */
+  function probe(cb) {
+    var p = new XMLHttpRequest();
+    p.open('GET', 'https://api.github.com/?p=' + new Date().getTime(), true);
+    p.timeout = 15000;
+    p.onreadystatechange = function () {
+      if (p.readyState !== 4) return;
+      cb(p.status ? 'GitHub responde (HTTP ' + p.status + '); o bloqueio é no envio do token' : 'GitHub não responde (rede, certificado ou cache)');
+    };
+    p.ontimeout = function () { cb('sem resposta do GitHub (tempo esgotado)'); };
+    p.onerror = function () { cb('GitHub não responde (rede, certificado ou cache)'); };
+    try { p.send(); } catch (e) { cb('erro: ' + e.message); }
+  }
+
   /* lê o arquivo textos.json do repositório */
   function fetchRemote(cb) {
     xhr('GET', apiUrl() + '?t=' + new Date().getTime(), undefined, function (err, d, status) {
@@ -252,7 +266,10 @@
     fetchRemote(function (err, data) {
       if (err) {
         syncing = false;
-        setSync('falhou (' + err.message + ') — usando a cópia deste aparelho' + (meta.pending ? '; há alterações para enviar' : '') + '.', '#f66');
+        setSync('falhou (' + err.message + ') — usando a cópia deste aparelho' + (meta.pending ? '; há alterações para enviar' : '') + '. Diagnosticando...', '#f66');
+        probe(function (info) {
+          setSync('falhou (' + err.message + '). Diagnóstico: ' + info + '. Versão 3.2', '#f66');
+        });
         return;
       }
       var remoteAt = (data && data.updatedAt) ? data.updatedAt : 0;
