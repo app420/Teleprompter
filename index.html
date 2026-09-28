@@ -89,6 +89,8 @@
     <label><input type="checkbox" id="guide" checked> Mostrar linha-guia vermelha</label>
   </div>
 
+  <p class="hint" id="offlineStatus" style="color:#fc6">Modo off-line: verificando...</p>
+
   <p class="hint">Durante a leitura: toque em qualquer lugar da tela para pausar ou continuar.
   Os botões no canto superior direito ajustam a velocidade (− / +), reiniciam (&#8635;) e saem (&#10005;).
   Os textos salvos ficam guardados no próprio iPad, sem precisar de internet.</p>
@@ -285,11 +287,31 @@
   applySettingsToForm(load(SETTINGS_KEY, readSettings()));
   if (scripts.length) { selectScript(0); } else { refreshList(); }
 
-  /* atualização do cache off-line, quando houver internet */
+  /* ---------- cópia off-line (Application Cache) ---------- */
+  var statusEl = $('offlineStatus');
+  function setStatus(msg, color) { statusEl.textContent = 'Modo off-line: ' + msg; statusEl.style.color = color || '#fc6'; }
   if (window.applicationCache) {
-    window.applicationCache.addEventListener('updateready', function () {
-      try { window.applicationCache.swapCache(); } catch (e) {}
+    var ac = window.applicationCache;
+    function onReady() { setStatus('PRONTO — o app já abre sem internet.', '#6f6'); }
+    ac.addEventListener('checking', function () { setStatus('verificando...'); }, false);
+    ac.addEventListener('downloading', function () { setStatus('baixando cópia... aguarde.'); }, false);
+    ac.addEventListener('progress', function () { setStatus('baixando cópia... aguarde.'); }, false);
+    ac.addEventListener('cached', onReady, false);
+    ac.addEventListener('noupdate', onReady, false);
+    ac.addEventListener('updateready', function () {
+      try { ac.swapCache(); } catch (e) {}
+      setStatus('nova versão baixada. Feche e abra o app de novo.', '#6f6');
     }, false);
+    ac.addEventListener('obsolete', function () { setStatus('arquivo de cache não encontrado no servidor (teleprompter.appcache).', '#f66'); }, false);
+    ac.addEventListener('error', function () {
+      if (navigator.onLine === false) { setStatus('sem internet agora (cópia salva será usada, se existir).'); }
+      else { setStatus('ERRO ao baixar a cópia. Recarregue a página com internet.', '#f66'); }
+    }, false);
+    /* estado atual, caso os eventos já tenham passado */
+    if (ac.status === 1) { onReady(); }
+    else if (ac.status === 0) { setStatus('NÃO ATIVO — o arquivo teleprompter.appcache não foi carregado.', '#f66'); }
+  } else {
+    setStatus('não suportado neste navegador.', '#f66');
   }
 })();
 </script>
