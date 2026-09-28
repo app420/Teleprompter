@@ -93,18 +93,19 @@
   </div>
 
   <div class="settings">
-    <h2>Sincronização entre aparelhos (via GitHub)</h2>
+    <h2>Sincronização</h2>
+    <p class="hint">No iPad: deixe o token em branco — ele lê os textos publicados no site. No computador: preencha os três campos para editar e publicar.</p>
     <label>Usuário do GitHub:
       <input type="text" id="ghUser" placeholder="ex.: guistorti" autocapitalize="off" autocorrect="off"></label>
-    <label>Nome do repositório privado de dados:
-      <input type="text" id="ghRepo" value="teleprompter-dados" autocapitalize="off" autocorrect="off"></label>
-    <label>Token de acesso (começa com github_pat_):
+    <label>Nome do repositório do site:
+      <input type="text" id="ghRepo" value="Teleprompter" autocapitalize="off" autocorrect="off"></label>
+    <label>Token de acesso (só no computador; começa com github_pat_):
       <input type="text" id="ghToken" placeholder="github_pat_..." autocapitalize="off" autocorrect="off"></label>
     <div class="row">
       <button id="btnSyncSave">Salvar configuração</button>
       <button id="btnSyncNow">Sincronizar agora</button>
     </div>
-    <p class="hint">O token fica guardado só neste aparelho. Os textos ficam no GitHub e são baixados a cada abertura; é preciso internet para usar o app.</p>
+    <p class="hint">Os textos ficam no arquivo textos.json do site e são visíveis a quem tiver o endereço. O token fica guardado só no aparelho em que foi digitado.</p>
   </div>
 
   <p class="hint">Durante a leitura: toque em qualquer lugar da tela para pausar ou continuar.
@@ -137,7 +138,7 @@
       ghUserInput = $('ghUser'), ghRepoInput = $('ghRepo'), ghTokenInput = $('ghToken');
 
   var STORAGE_KEY = 'tp_scripts', SETTINGS_KEY = 'tp_settings',
-      SYNC_KEY = 'tp_sync_gh', META_KEY = 'tp_meta', DATA_FILE = 'textos.json';
+      SYNC_KEY = 'tp_sync_v5', META_KEY = 'tp_meta', DATA_FILE = 'textos.json';
   var scripts = [], currentIndex = -1;
 
   /* ---------- armazenamento local ---------- */
@@ -179,19 +180,22 @@
     inputs[i].addEventListener('input', updateLabels, false);
   }
 
-  /* ---------- sincronização via API do GitHub ---------- */
-  var sync = load(SYNC_KEY, { user: '', repo: 'teleprompter-dados', token: '' });
+  /* ---------- sincronização ----------
+     Com token (computador): lê e grava textos.json no repositório do site, pela API do GitHub.
+     Sem token (iPad): lê textos.json publicado no próprio site (mesma origem), somente leitura. */
+  var sync = load(SYNC_KEY, { user: '', repo: 'Teleprompter', token: '' });
   var meta = load(META_KEY, { updatedAt: 0, pending: false });
-  var syncing = false, remoteSha = null;
+  var syncing = false, remoteSha = null, readOnly = false;
 
   function setSync(msg, color) { syncStatusEl.textContent = 'Sincronização: ' + msg; syncStatusEl.style.color = color || '#fc6'; }
-  function syncConfigured() { return !!(sync.user && sync.repo && sync.token); }
+  function hasToken() { return !!(sync.user && sync.repo && sync.token); }
   function apiUrl() {
     return 'https://api.github.com/repos/' + encodeURIComponent(sync.user) + '/' +
            encodeURIComponent(sync.repo) + '/contents/' + DATA_FILE;
   }
   function utf8ToB64(s) { return window.btoa(unescape(encodeURIComponent(s))); }
   function b64ToUtf8(b) { return decodeURIComponent(escape(window.atob((b || '').replace(/\s/g, '')))); }
+  function hora() { var d = new Date(); function p(n) { return (n < 10 ? '0' : '') + n; } return p(d.getHours()) + ':' + p(d.getMinutes()); }
 
   function xhr(method, url, body, cb) {
     var x = new XMLHttpRequest();
@@ -211,24 +215,27 @@
     else { x.send(); }
   }
 
-  /* teste simples, sem cabeçalhos especiais, para diagnosticar falhas */
-  function probe(cb) {
-    var p = new XMLHttpRequest();
-    p.open('GET', 'https://api.github.com/?p=' + new Date().getTime(), true);
-    p.timeout = 15000;
-    p.onreadystatechange = function () {
-      if (p.readyState !== 4) return;
-      cb(p.status ? 'GitHub responde (HTTP ' + p.status + '); o bloqueio é no envio do token' : 'GitHub não responde (rede, certificado ou cache)');
+  /* lê textos.json publicado no próprio site (sem token, mesma origem) */
+  function fetchSite(cb) {
+    var x = new XMLHttpRequest();
+    x.open('GET', DATA_FILE + '?t=' + new Date().getTime(), true);
+    x.timeout = 25000;
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      if (x.status === 404) { cb(null, null); return; }
+      if (x.status >= 200 && x.status < 300) {
+        var d = null; try { d = JSON.parse(x.responseText); } catch (e) {}
+        cb(null, d);
+      } else { cb(new Error('HTTP ' + x.status)); }
     };
-    p.ontimeout = function () { cb('sem resposta do GitHub (tempo esgotado)'); };
-    p.onerror = function () { cb('GitHub não responde (rede, certificado ou cache)'); };
-    try { p.send(); } catch (e) { cb('erro: ' + e.message); }
+    x.ontimeout = function () { cb(new Error('tempo esgotado')); };
+    x.onerror = function () { cb(new Error('falha de rede')); };
+    x.send();
   }
-
-  /* lê o arquivo textos.json do repositório */
-  function fetchRemote(cb) {
+  /* lê textos.json pela API (com token) */
+  function fetchApi(cb) {
     xhr('GET', apiUrl() + '?t=' + new Date().getTime(), undefined, function (err, d, status) {
-      if (err && status === 404) { remoteSha = null; cb(null, null); return; }   /* arquivo ainda não existe */
+      if (err && status === 404) { remoteSha = null; cb(null, null); return; }
       if (err) { cb(err); return; }
       remoteSha = d.sha;
       var data = null;
@@ -236,7 +243,7 @@
       cb(null, data);
     });
   }
-  /* grava o arquivo textos.json no repositório */
+  /* grava textos.json pela API (com token) */
   function push(cb) {
     var payload = {
       message: 'Teleprompter: textos atualizados',
@@ -253,27 +260,40 @@
     meta.updatedAt = new Date().getTime(); meta.pending = true;
     store(META_KEY, meta); store(STORAGE_KEY, scripts);
   }
+  function adoptRemote(data) {
+    scripts = (data && data.scripts) ? data.scripts : [];
+    meta.updatedAt = (data && data.updatedAt) ? data.updatedAt : 0; meta.pending = false;
+    store(STORAGE_KEY, scripts); store(META_KEY, meta);
+    selectScript(scripts.length ? 0 : -1);
+  }
 
   function doSync() {
-    if (!syncConfigured()) { setSync('não configurada (preencha usuário, repositório e token abaixo).'); return; }
     if (syncing) return;
     syncing = true;
     setSync('sincronizando...');
-    fetchRemote(function (err, data) {
+    if (!hasToken()) {
+      /* MODO LEITURA (iPad): textos publicados no site */
+      readOnly = true;
+      fetchSite(function (err, data) {
+        syncing = false;
+        if (err) { setSync('sem acesso ao site agora (' + err.message + ') — mostrando a última cópia deste aparelho.', '#f66'); return; }
+        if (!data) { setSync('modo leitura — nenhum texto publicado ainda (salve no computador).'); return; }
+        adoptRemote(data);
+        setSync('modo leitura — textos do site atualizados às ' + hora() + '.', '#6f6');
+      });
+      return;
+    }
+    /* MODO COMPLETO (computador): API do GitHub */
+    readOnly = false;
+    fetchApi(function (err, data) {
       if (err) {
         syncing = false;
-        setSync('falhou (' + err.message + ') — usando a cópia deste aparelho' + (meta.pending ? '; há alterações para enviar' : '') + '. Diagnosticando...', '#f66');
-        probe(function (info) {
-          setSync('falhou (' + err.message + '). Diagnóstico: ' + info + '. Versão 4.0', '#f66');
-        });
+        setSync('falhou (' + err.message + '). Verifique usuário, repositório e token.', '#f66');
         return;
       }
       var remoteAt = (data && data.updatedAt) ? data.updatedAt : 0;
-      var remoteScripts = (data && data.scripts) ? data.scripts : [];
       if (remoteAt > meta.updatedAt) {
-        scripts = remoteScripts; meta.updatedAt = remoteAt; meta.pending = false;
-        store(STORAGE_KEY, scripts); store(META_KEY, meta);
-        selectScript(scripts.length ? 0 : -1);
+        adoptRemote(data);
         syncing = false;
         setSync('em dia (textos recebidos).', '#6f6');
       } else if (meta.pending || meta.updatedAt > remoteAt || (!data && scripts.length)) {
@@ -281,7 +301,7 @@
         push(function (e2) {
           syncing = false;
           if (e2) setSync('erro ao enviar (' + e2.message + '). Toque em "Sincronizar agora".', '#f66');
-          else setSync('em dia (textos enviados).', '#6f6');
+          else setSync('em dia (textos publicados; o iPad vê em até 10 min).', '#6f6');
         });
       } else {
         syncing = false;
@@ -289,16 +309,16 @@
       }
     });
   }
-  /* depois de salvar/excluir: envia direto (lendo antes para pegar a versão atual do arquivo) */
+  /* depois de salvar/excluir */
   function afterChange() {
     markChanged();
-    if (!syncConfigured()) return;
-    setSync('enviando...');
-    fetchRemote(function (err) {
-      if (err) { setSync('salvo neste aparelho; será enviado quando houver internet.'); return; }
+    if (!hasToken()) { setSync('salvo só neste aparelho (modo leitura). Para publicar, edite no computador.'); return; }
+    setSync('publicando...');
+    fetchApi(function (err) {
+      if (err) { setSync('salvo neste aparelho; será publicado quando houver conexão.'); return; }
       push(function (e2) {
-        if (e2) setSync('salvo neste aparelho; será enviado quando houver internet.');
-        else setSync('em dia.', '#6f6');
+        if (e2) setSync('salvo neste aparelho; erro ao publicar (' + e2.message + ').', '#f66');
+        else setSync('em dia (textos publicados; o iPad vê em até 10 min).', '#6f6');
       });
     });
   }
@@ -307,10 +327,8 @@
   $('btnSyncSave').addEventListener('click', function () {
     sync = { user: trim(ghUserInput.value), repo: trim(ghRepoInput.value), token: trim(ghTokenInput.value) };
     store(SYNC_KEY, sync);
-    if (syncConfigured()) {
-      if (scripts.length && !meta.updatedAt) { meta.updatedAt = new Date().getTime(); meta.pending = true; store(META_KEY, meta); }
-      doSync();
-    } else { setSync('não configurada.'); }
+    if (hasToken() && scripts.length && !meta.updatedAt) { meta.updatedAt = new Date().getTime(); meta.pending = true; store(META_KEY, meta); }
+    doSync();
   }, false);
   $('btnSyncNow').addEventListener('click', doSync, false);
   window.addEventListener('online', doSync, false);
