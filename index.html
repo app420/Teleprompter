@@ -206,7 +206,7 @@
       } else { cb(new Error('HTTP ' + x.status)); }
     };
     x.ontimeout = function () { cb(new Error('tempo esgotado')); };
-    x.onerror = function () { cb(new Error('falha de rede')); };
+    x.onerror = function () { cb(new Error('falha de rede/certificado')); };
     if (body !== undefined) { x.setRequestHeader('Content-Type', 'application/json'); x.send(JSON.stringify(body)); }
     else { x.send(); }
   }
@@ -235,7 +235,7 @@
     xhr('GET', remoteUrl(), undefined, function (err, data) {
       if (err) {
         syncing = false;
-        setSync('sem conexão — usando a cópia deste aparelho' + (meta.pending ? ' (há alterações para enviar)' : '') + '.');
+        setSync('falhou (' + err.message + ') — usando a cópia deste aparelho' + (meta.pending ? '; há alterações para enviar' : '') + '.', '#f66');
         return;
       }
       var remoteAt = (data && data.updatedAt) ? data.updatedAt : 0;
