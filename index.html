@@ -201,9 +201,8 @@
     var x = new XMLHttpRequest();
     x.open(method, url, true);
     x.timeout = 25000;
-    x.setRequestHeader('Authorization', 'token ' + sync.token);
+    x.setRequestHeader('Authorization', 'Bearer ' + sync.token);
     x.setRequestHeader('Accept', 'application/vnd.github+json');
-    x.setRequestHeader('Cache-Control', 'no-cache');
     x.onreadystatechange = function () {
       if (x.readyState !== 4) return;
       var d = null; try { d = JSON.parse(x.responseText); } catch (e) {}
