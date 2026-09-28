@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" manifest="teleprompter.appcache">
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -104,10 +104,8 @@
       <button id="btnSyncSave">Salvar configuração</button>
       <button id="btnSyncNow">Sincronizar agora</button>
     </div>
-    <p class="hint">O token fica guardado só neste aparelho. Se o mesmo texto for editado em dois aparelhos sem internet, vale a edição mais recente.</p>
+    <p class="hint">O token fica guardado só neste aparelho. Os textos ficam no GitHub e são baixados a cada abertura; é preciso internet para usar o app.</p>
   </div>
-
-  <p class="hint" id="offlineStatus" style="color:#fc6">Modo off-line: verificando...</p>
 
   <p class="hint">Durante a leitura: toque em qualquer lugar da tela para pausar ou continuar.
   Os botões no canto superior direito ajustam a velocidade (− / +), reiniciam (&#8635;) e saem (&#10005;).</p>
@@ -266,7 +264,7 @@
         syncing = false;
         setSync('falhou (' + err.message + ') — usando a cópia deste aparelho' + (meta.pending ? '; há alterações para enviar' : '') + '. Diagnosticando...', '#f66');
         probe(function (info) {
-          setSync('falhou (' + err.message + '). Diagnóstico: ' + info + '. Versão 3.3', '#f66');
+          setSync('falhou (' + err.message + '). Diagnóstico: ' + info + '. Versão 4.0', '#f66');
         });
         return;
       }
@@ -442,32 +440,6 @@
   if (scripts.length) { selectScript(0); } else { refreshList(); }
   doSync();
 
-  /* ---------- cópia off-line (Application Cache) ---------- */
-  var statusEl = $('offlineStatus');
-  function setStatus(msg, color) { statusEl.textContent = 'Modo off-line: ' + msg; statusEl.style.color = color || '#fc6'; }
-  function checkCacheStatus() {
-    if (!window.applicationCache) { setStatus('não suportado neste navegador.', '#f66'); return; }
-    var st = window.applicationCache.status;
-    if (st === 1 || st === 4) setStatus('PRONTO — o app abre sem internet.', '#6f6');
-    else if (st === 0) setStatus('não ativo (teleprompter.appcache não carregou).', '#f66');
-    else if (st === 5) setStatus('cache antigo; recarregue com internet.', '#f66');
-    else setStatus('preparando cópia...');
-  }
-  if (window.applicationCache) {
-    var ac = window.applicationCache;
-    ac.addEventListener('cached', checkCacheStatus, false);
-    ac.addEventListener('noupdate', checkCacheStatus, false);
-    ac.addEventListener('obsolete', checkCacheStatus, false);
-    ac.addEventListener('updateready', function () {
-      try { ac.swapCache(); } catch (e) {}
-      setStatus('nova versão baixada. Feche e abra o app de novo.', '#6f6');
-    }, false);
-    ac.addEventListener('error', function () {
-      if (navigator.onLine === false) setStatus('sem internet agora — usando a cópia salva.');
-      else checkCacheStatus();
-    }, false);
-  }
-  window.addEventListener('load', function () { setTimeout(checkCacheStatus, 1500); }, false);
 })();
 </script>
 </body>
